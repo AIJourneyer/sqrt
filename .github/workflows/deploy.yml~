@@ -1,0 +1,39 @@
+name: Deploy to GKE
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Google Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        project_id: decoded-carport-462505-v8
+        service_account_key: ${{ secrets.GCP_SA_KEY }}
+        export_default_credentials: true
+
+    - name: Configure Docker for Artifact Registry
+      run: gcloud auth configure-docker us-central1-docker.pkg.dev
+
+    - name: Build and push Docker image
+      run: |
+        IMAGE=us-central1-docker.pkg.dev/decoded-carport-462505-v8/square-root-repo/square-root:latest
+        docker build -t $IMAGE .
+        docker push $IMAGE
+
+    - name: Set up kubectl
+      run: |
+        gcloud container clusters get-credentials sqrt-cluster --zone us-central1-a
+
+    - name: Deploy to GKE
+      run: |
+        kubectl create deployment square-root --image=us-central1-docker.pkg.dev/decoded-carport-462505-v8/square-root-repo/square-root:latest --dry-run=client -o yaml | kubectl apply -f -
+        kubectl expose deployment square-root --type=LoadBalancer --port=80 --target-port=8080 --name=square-root-service --dry-run=client -o yaml | kubectl apply -f -
